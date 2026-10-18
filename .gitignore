@@ -1,0 +1,13 @@
+# compiled binaries
+/gosmuggler
+/smuggler
+gosmuggler.exe
+smuggler.exe
+
+# runtime artifacts / scratch
+*.log
+*.jsonl
+sitemap.json
+sitemap.txt
+resp.txt
+functions.txt
