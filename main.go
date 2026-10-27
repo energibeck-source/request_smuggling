@@ -148,6 +148,18 @@ var ModuleRegistry = map[string]ModuleConstructor{
 			Timeout:   timeout,
 		}
 	},
+	"cl0": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.CLZeroModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
+	"te0": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.TEZeroModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
 	"h2te": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
 		_ = req
 		return &modules.H2TEModule{

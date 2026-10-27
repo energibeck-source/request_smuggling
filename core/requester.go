@@ -1,9 +1,11 @@
 package core
 
 import (
+	"bufio"
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -174,6 +176,72 @@ func (r *SimpleRequester) SendRawWithDelay(
 	secondResp = append([]byte(nil), buf[:n]...)
 
 	return firstResp, secondResp, firstDur, secondDur, readErr
+}
+
+// SendRawPipelined writes every request in reqs on a SINGLE keep-alive
+// connection (optional pause between writes), then reads back every HTTP
+// response it can parse off that same socket until EOF/timeout.
+//
+// It is the primitive for connection-reuse desync classes (CL.0, TE.0, H2.0,
+// connection-state, RQP): send a poisoned request followed by a normal one on
+// one socket and inspect how the responses line up. A mismatch between the
+// number of requests sent and responses read, or a second response that does
+// not match its baseline, is the desync signal — the caller decides.
+//
+// Each returned NormalResponse carries its own parse error (if any) in .Error;
+// the returned error is reserved for connection-level failures (dial/write).
+func (r *SimpleRequester) SendRawPipelined(t Target, reqs [][]byte, pause time.Duration) ([]NormalResponse, error) {
+	if len(reqs) == 0 {
+		return nil, fmt.Errorf("SendRawPipelined: no requests given")
+	}
+
+	conn, err := r.dial(t)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	for i, req := range reqs {
+		if r.Timeout > 0 {
+			_ = conn.SetWriteDeadline(time.Now().Add(r.Timeout))
+		}
+		if _, err := conn.Write(req); err != nil {
+			return nil, fmt.Errorf("SendRawPipelined: write req %d: %w", i, err)
+		}
+		if pause > 0 && i < len(reqs)-1 {
+			time.Sleep(pause)
+		}
+	}
+
+	if r.Timeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(r.Timeout))
+	}
+
+	start := time.Now()
+	reader := bufio.NewReader(conn)
+	responses := make([]NormalResponse, 0, len(reqs))
+
+	for {
+		httpResp, parseErr := http.ReadResponse(reader, nil)
+		if parseErr != nil {
+			// EOF/timeout after at least one response is normal end-of-stream;
+			// a parse error with zero responses is a real failure to surface.
+			if len(responses) == 0 && !errors.Is(parseErr, io.EOF) {
+				responses = append(responses, NormalResponse{Error: parseErr, Delay: time.Since(start)})
+			}
+			break
+		}
+
+		dur := time.Since(start)
+		nr := ParseNormal(httpResp, dur, nil)
+		responses = append(responses, nr)
+
+		if len(responses) >= 64 {
+			break // runaway guard
+		}
+	}
+
+	return responses, nil
 }
 
 func (h HeaderMap) String() string {
