@@ -68,7 +68,7 @@ func (m *H2CL_ignoreModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 		if ctx.Options.ExitOnFind {
 			break
 		} else {
-			time.Sleep(core.JitterDelay(delay))
+			core.PaceN(delay, 1)
 		}
 	}
 

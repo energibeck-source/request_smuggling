@@ -36,6 +36,7 @@ type Result struct {
 	Findings         []Finding `json:"findings,omitempty"`
 	ProtocolVersions []string  `json:"protocol_versions,omitempty"`
 	TriedModules     []string  `json:"tried_modules,omitempty"`
+	AcceptsBody      *bool     `json:"accepts_body,omitempty"`
 }
 
 type NormalResponse struct {

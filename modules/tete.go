@@ -36,7 +36,6 @@ func (m *TETEModule) Name() string { return "TETE" }
 
 func (m *TETEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 	target := ctx.Target
-	delay := ctx.Options.RateInterval
 	var findings []core.Finding
 
 	log.Println("[TETE] module is running for", target.Host)
@@ -51,8 +50,6 @@ func (m *TETEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 			log.Printf("[TETE] testing obfuscation: %s (%s)", obf.name, obf.header)
 			resp1 := core.ParseRawResponse(m.Requester.SendRaw(target, request1))
 			causesTimeout1 := core.CheckTimeout(resp1, m.Timeout)
-
-			time.Sleep(core.JitterDelay(delay))
 
 			resp2 := core.ParseRawResponse(m.Requester.SendRaw(target, request2))
 			causesTimeout2 := core.CheckTimeout(resp2, m.Timeout)
@@ -84,7 +81,6 @@ func (m *TETEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				findings = append(findings, f)
 
 			}
-			time.Sleep(core.JitterDelay(delay))
 		}
 	}
 

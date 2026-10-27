@@ -51,7 +51,8 @@ func main() {
 	}
 
 	requester := &core.SimpleRequester{
-		Timeout: opts.Timeout,
+		Timeout:      opts.Timeout,
+		RateInterval: opts.RateInterval,
 	}
 
 	ctx := core.ScanContext{
@@ -65,6 +66,15 @@ func main() {
 	}
 
 	runner.Modules = SelectModules(opts.Tech, requester, opts.Timeout)
+
+	if opts.CSAHost != "" {
+		for _, mod := range runner.Modules {
+			if cs, ok := mod.(*modules.ConnStateModule); ok {
+				cs.AltHost = opts.CSAHost
+			}
+		}
+	}
+
 	delay := opts.Delay
 
 	for i, rec := range target.Sitemap {
@@ -150,6 +160,36 @@ var ModuleRegistry = map[string]ModuleConstructor{
 	},
 	"cl0": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
 		return &modules.CLZeroModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
+	"h20": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		_ = req
+		return &modules.H2ZeroModule{
+			Timeout: timeout,
+		}
+	},
+	"connstate": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.ConnStateModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
+	"expect": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.ExpectModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
+	"chunkext": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.ChunkExtModule{
+			Requester: req,
+			Timeout:   timeout,
+		}
+	},
+	"headermatrix": func(req *core.SimpleRequester, timeout time.Duration) core.Module {
+		return &modules.HeaderMatrixModule{
 			Requester: req,
 			Timeout:   timeout,
 		}

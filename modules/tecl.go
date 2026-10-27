@@ -70,8 +70,6 @@ func (m *TECLModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 						return findings, nil
 					}
 				}
-				delay := ctx.Options.RateInterval
-				time.Sleep(core.JitterDelay(delay))
 			}
 
 		} else {

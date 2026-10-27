@@ -43,8 +43,10 @@ type Options struct {
 	TLSProfile      string
 	MaxRetries      int
 	Tech            string
+	CSAHost         string
 	Timeout         time.Duration
 	Delay           time.Duration
+	Timing          int
 	RateLimit       int
 	RateLimitPerMin int
 	RateIntervalStr string
@@ -78,11 +80,13 @@ func ParseOptions() Options {
 	flag.BoolVar(&opts.NeedRunKatana, "run-katana", false, "Autorun katana w predefined flags (prior over '-s sitemap.jsonl' oprion)")
 
 	flag.StringVar(&opts.Tech, "tech", "all", "Techniques to run (e.g. h1,h2,clte,tecl,tete,h2te,h2cl,h2crlf,all)")
+	flag.StringVar(&opts.CSAHost, "csa", "", "Connection-state abuse: alt Host for the connstate probe (e.g. localhost:8000)")
 	flag.Var(&opts.ExtraHeaders, "H", "Custom header (Can be used multiple times)")
 	flag.BoolVar(&opts.ExitOnFind, "x", false, "Exit scan after first finding")
 	flag.IntVar(&opts.MaxRetries, "r", 3, "Max retries per module")
 	flag.DurationVar(&opts.Timeout, "t", 10*time.Second, "Request timeout")
 	flag.DurationVar(&opts.Delay, "delay", 5*time.Second, "Delay between running modules")
+	flag.IntVar(&opts.Timing, "T", 0, "Timing preset 1..5 (T1 paranoid .. T5 insane); overrides -rl/-rpm, -ri still wins")
 	flag.IntVar(&opts.RateLimit, "rl", 5, "Requests per second rate limit")
 	flag.IntVar(&opts.RateLimitPerMin, "rpm", 0, "Requests per minute rate limit (0 = disabled)")
 	flag.StringVar(&opts.RateIntervalStr, "ri", "", "Explicit delay between requests (eg 5s or 10m)")
@@ -146,6 +150,24 @@ func calculateRateInterval(opts *Options) error {
 			return fmt.Errorf("invalid RateIntervalStr %q: %w", opts.RateIntervalStr, err)
 		}
 		opts.RateInterval = dur
+		return nil
+	}
+
+	if opts.Timing > 0 {
+		switch opts.Timing {
+		case 1:
+			opts.RateInterval = 15 * time.Second
+		case 2:
+			opts.RateInterval = 5 * time.Second
+		case 3:
+			opts.RateInterval = 1 * time.Second
+		case 4:
+			opts.RateInterval = 300 * time.Millisecond
+		case 5:
+			opts.RateInterval = 0
+		default:
+			return fmt.Errorf("invalid -T %d (use 1..5: T1 paranoid .. T5 insane)", opts.Timing)
+		}
 		return nil
 	}
 
@@ -272,12 +294,14 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -u        string        Target URL (https://host:port/path)\n")
 	fmt.Fprintf(os.Stderr, "  -f        string        JSON file containing targets (add_target.sh helps)\n")
 	fmt.Fprintf(os.Stderr, "  -p        int           Target port (overrides URL port)\n")
-	fmt.Fprintf(os.Stderr, "  -tech     string        Techniques (h1,h2,clte,tecl,h2te...)\n\n")
+	fmt.Fprintf(os.Stderr, "  -tech     string        Techniques (h1,h2,clte,tecl,h2te...)\n")
+	fmt.Fprintf(os.Stderr, "  -csa      string        Connection-state abuse alt Host (e.g. localhost:8000)\n\n")
 	fmt.Fprintf(os.Stderr, "  -rk -run-katana     bool        Autorun katana for sitemap)\n")
 	fmt.Fprintf(os.Stderr, "  -t        duration      Request timeout (default 10s)\n")
 	fmt.Fprintf(os.Stderr, "  -delay    duration      Delay between modules (default 5s)\n")
 	fmt.Fprintf(os.Stderr, "  -ri       duration      Explicit delay between requests (overrides rl/rpm)\n")
 	fmt.Fprintf(os.Stderr, "  -r        int           Max retries per request (default 3)\n")
+	fmt.Fprintf(os.Stderr, "  -T        int           Timing preset 1..5 (T1 paranoid .. T5 insane)\n")
 	fmt.Fprintf(os.Stderr, "  -rl       int           Requests per second (default 5)\n")
 	fmt.Fprintf(os.Stderr, "  -rpm      int           Requests per minute (default 0 = unlimited)\n\n")
 	fmt.Fprintf(os.Stderr, "  -H        string        Custom headers\n")

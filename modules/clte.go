@@ -18,7 +18,6 @@ func (m *CLTEModule) Name() string { return "CLTE" }
 
 func (m *CLTEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 	target := ctx.Target
-	delay := ctx.Options.RateInterval
 	var findings []core.Finding
 
 	log.Println("[CLTE] module is running for", target.Host)
@@ -41,8 +40,6 @@ func (m *CLTEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 			findings = append(findings, f)
 			rec.Result.Findings = append(rec.Result.Findings, f)
 		}
-
-		time.Sleep(core.JitterDelay(delay))
 
 		for attempt := 0; attempt < ctx.Options.MaxRetries; attempt++ {
 
@@ -76,8 +73,6 @@ func (m *CLTEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				*rec = enrichRecord(*rec, m.Name(), f)
 				break
 			}
-
-			time.Sleep(core.JitterDelay(delay))
 
 		}
 	}

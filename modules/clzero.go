@@ -20,7 +20,6 @@ func (m *CLZeroModule) Name() string { return "CL.0" }
 
 func (m *CLZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 	target := ctx.Target
-	delay := ctx.Options.RateInterval
 	var findings []core.Finding
 
 	log.Println("[CL.0] module is running for", target.Host)
@@ -44,19 +43,9 @@ func (m *CLZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 			resps, err := m.Requester.SendRawPipelined(target, [][]byte{poison, normal}, 0)
 			if err != nil {
 				log.Printf("[CL.0] pipelined send error for %s: %v", rec.Request.Endpoint, err)
-				time.Sleep(core.JitterDelay(delay))
 				continue
 			}
 
-			// The poison body ends on a dangling header (X-Ignore:), so on a
-			// CL.0-vulnerable back-end the trailing normal GET glues onto the
-			// smuggled prefix and gets rewritten to /marker. We still sent 2
-			// requests and expect 2 responses, but the SECOND response now
-			// answers /marker instead of the record's own path — that
-			// divergence from baseline is the signal. (A count >2 would mean a
-			// complete request leaked and the queue was poisoned; the dangling
-			// header is designed to prevent that, but we still flag it High if
-			// it ever happens.)
 			statuses := make([]string, 0, len(resps))
 			for _, r := range resps {
 				if r.Error != nil {
@@ -86,8 +75,6 @@ func (m *CLZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				break
 			}
 
-			// Primary signal: trailing normal request's response no longer
-			// matches its baseline — it was rewritten to the smuggled /marker.
 			if len(resps) == 2 {
 				last := resps[len(resps)-1]
 				comp := core.CompareRequests(rec.Response, last)
@@ -110,7 +97,6 @@ func (m *CLZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				}
 			}
 
-			time.Sleep(core.JitterDelay(delay))
 		}
 	}
 

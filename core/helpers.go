@@ -235,3 +235,12 @@ func JitterDelay(delay time.Duration) time.Duration {
 	jitter := time.Duration(rand.Int63n(int64(delay)))
 	return delay + jitter
 }
+
+func PaceN(delay time.Duration, n int) {
+	if delay <= 0 || n <= 0 {
+		return
+	}
+	for i := 0; i < n; i++ {
+		time.Sleep(JitterDelay(delay))
+	}
+}

@@ -53,8 +53,6 @@ func (m *H2CRLFInj) Run(ctx core.ScanContext) ([]core.Finding, error) {
 
 	mutations := payloads.H2CRLFVariants()
 
-	throttle := time.Tick(ctx.Options.RateInterval)
-
 	for i := range target.Sitemap {
 		rec := &target.Sitemap[i]
 		if rec.Response.StatusCode == 0 {
@@ -62,7 +60,7 @@ func (m *H2CRLFInj) Run(ctx core.ScanContext) ([]core.Finding, error) {
 		}
 		u, _ := url.Parse(rec.Request.Endpoint)
 		for _, v := range mutations {
-			<-throttle
+			core.PaceN(ctx.Options.RateInterval, 1)
 
 			client, conn, err := core.NewH2Connection(target)
 			if err != nil {

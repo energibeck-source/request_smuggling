@@ -19,7 +19,6 @@ func (m *ZeroCLModule) Name() string { return "ZeroCL" }
 
 func (m *ZeroCLModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 	target := ctx.Target
-	baseDelay := ctx.Options.RateInterval
 	var findings []core.Finding
 
 	log.Printf("[ZeroCL] module is running for %s, this one could take some time\n", fmt.Sprintf("%s:%d", target.Host, target.Port))
@@ -117,7 +116,6 @@ func (m *ZeroCLModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 						return findings, nil
 					}
 				}
-				time.Sleep(core.JitterDelay(baseDelay))
 			}
 
 		} else {
@@ -153,7 +151,6 @@ func (m *ZeroCLModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 					break
 				}
 
-				time.Sleep(core.JitterDelay(baseDelay))
 			}
 
 		}
@@ -162,7 +159,6 @@ func (m *ZeroCLModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				return findings, nil
 			}
 		}
-		time.Sleep(core.JitterDelay(baseDelay))
 	}
 	log.Printf("[%s] module complete, findings: %d", m.Name(), len(findings))
 	return findings, nil

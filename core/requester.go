@@ -15,14 +15,22 @@ import (
 )
 
 type SimpleRequester struct {
-	Timeout     time.Duration
-	TLSConf     *tls.Config
-	RateLimiter <-chan time.Time
-	ProxyAddr   string
-	TLSProfile  string
+	Timeout      time.Duration
+	TLSConf      *tls.Config
+	RateLimiter  <-chan time.Time
+	ProxyAddr    string
+	TLSProfile   string
+	RateInterval time.Duration
+}
+
+func (r *SimpleRequester) pace(n int) {
+	if r.RateInterval > 0 {
+		PaceN(r.RateInterval, n)
+	}
 }
 
 func (r *SimpleRequester) SendNormal(t Target, url string) (*http.Response, time.Duration, error) {
+	defer r.pace(1)
 
 	transport := &http.Transport{}
 	if t.TLS {
@@ -81,6 +89,7 @@ func (r *SimpleRequester) dial(t Target) (net.Conn, error) {
 }
 
 func (r *SimpleRequester) SendRaw(t Target, payload []byte) ([]byte, time.Duration, error) {
+	defer r.pace(1)
 
 	conn, err := r.dial(t)
 	if err != nil {
@@ -102,6 +111,7 @@ func (r *SimpleRequester) SendRaw(t Target, payload []byte) ([]byte, time.Durati
 }
 
 func (r *SimpleRequester) SendRawProbe(t Target, payload []byte, hardLimit time.Duration) ([]byte, time.Duration, error) {
+	defer r.pace(1)
 	conn, err := r.dial(t)
 	if err != nil {
 		return nil, 0, err
@@ -128,6 +138,7 @@ func (r *SimpleRequester) SendRawWithDelay(
 ) (
 	firstResp, secondResp []byte, firstDur, secondDur time.Duration, err error,
 ) {
+	defer r.pace(1)
 
 	conn, err := r.dial(t)
 	if err != nil {
@@ -178,22 +189,11 @@ func (r *SimpleRequester) SendRawWithDelay(
 	return firstResp, secondResp, firstDur, secondDur, readErr
 }
 
-// SendRawPipelined writes every request in reqs on a SINGLE keep-alive
-// connection (optional pause between writes), then reads back every HTTP
-// response it can parse off that same socket until EOF/timeout.
-//
-// It is the primitive for connection-reuse desync classes (CL.0, TE.0, H2.0,
-// connection-state, RQP): send a poisoned request followed by a normal one on
-// one socket and inspect how the responses line up. A mismatch between the
-// number of requests sent and responses read, or a second response that does
-// not match its baseline, is the desync signal — the caller decides.
-//
-// Each returned NormalResponse carries its own parse error (if any) in .Error;
-// the returned error is reserved for connection-level failures (dial/write).
 func (r *SimpleRequester) SendRawPipelined(t Target, reqs [][]byte, pause time.Duration) ([]NormalResponse, error) {
 	if len(reqs) == 0 {
 		return nil, fmt.Errorf("SendRawPipelined: no requests given")
 	}
+	defer r.pace(len(reqs))
 
 	conn, err := r.dial(t)
 	if err != nil {
@@ -224,8 +224,6 @@ func (r *SimpleRequester) SendRawPipelined(t Target, reqs [][]byte, pause time.D
 	for {
 		httpResp, parseErr := http.ReadResponse(reader, nil)
 		if parseErr != nil {
-			// EOF/timeout after at least one response is normal end-of-stream;
-			// a parse error with zero responses is a real failure to surface.
 			if len(responses) == 0 && !errors.Is(parseErr, io.EOF) {
 				responses = append(responses, NormalResponse{Error: parseErr, Delay: time.Since(start)})
 			}
@@ -237,7 +235,7 @@ func (r *SimpleRequester) SendRawPipelined(t Target, reqs [][]byte, pause time.D
 		responses = append(responses, nr)
 
 		if len(responses) >= 64 {
-			break // runaway guard
+			break
 		}
 	}
 

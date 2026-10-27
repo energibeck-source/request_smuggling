@@ -20,7 +20,6 @@ func (m *TEZeroModule) Name() string { return "TE.0" }
 
 func (m *TEZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 	target := ctx.Target
-	delay := ctx.Options.RateInterval
 	var findings []core.Finding
 
 	log.Println("[TE.0] module is running for", target.Host)
@@ -44,17 +43,9 @@ func (m *TEZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 			resps, err := m.Requester.SendRawPipelined(target, [][]byte{poison, normal}, 0)
 			if err != nil {
 				log.Printf("[TE.0] pipelined send error for %s: %v", rec.Request.Endpoint, err)
-				time.Sleep(core.JitterDelay(delay))
 				continue
 			}
 
-			// The OPTIONS poison carries a chunked body ending on a dangling
-			// X-Ignore header. A back-end that ignores Transfer-Encoding parses
-			// the chunk payload as a request, so the trailing normal GET glues
-			// onto the smuggled prefix and is rewritten to /marker. We expect 2
-			// responses; the second answering /marker instead of the record's
-			// own path is the signal. A count >2 means a complete request
-			// leaked (queue poisoned) — flagged High.
 			statuses := make([]string, 0, len(resps))
 			for _, r := range resps {
 				if r.Error != nil {
@@ -106,7 +97,6 @@ func (m *TEZeroModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 				}
 			}
 
-			time.Sleep(core.JitterDelay(delay))
 		}
 	}
 

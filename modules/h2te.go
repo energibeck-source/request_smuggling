@@ -75,7 +75,7 @@ func (m *H2TEModule) Run(ctx core.ScanContext) ([]core.Finding, error) {
 			}
 		}
 		delay := ctx.Options.RateInterval
-		time.Sleep(core.JitterDelay(delay))
+		core.PaceN(delay, 1)
 	}
 
 	log.Printf("[H2TE] finished, findings: %d\n", len(findings))

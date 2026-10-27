@@ -17,11 +17,11 @@ Sources read 2026-10-19:
 
 - [x] **TE.0** — back-end ignores Transfer-Encoding, treats the chunked body as empty (the "CL.0 of chunked"). Google Cloud LB bug. Probe with **OPTIONS** (GET/POST failed in their tests), `Transfer-Encoding: chunked`, smuggled request in the chunk, no self-added Content-Length. DONE 2026-10-27: `modules/tezero.go` (tech `te0`), payload `BuildTEZero` on `SendRawPipelined`. Fragment-safe (dangling X-Ignore, no queue poisoning). NOTE: payload contract + safety verified by test; full front/back TE.0 behavior needs a real target — not yet hit in the wild.
 
-- [ ] **H2.0** — HTTP/2 variant of CL.0: an HTTP/2 request carrying content-length is ignored by the back-end after downgrade. Same two-request test as CL.0. Seen on amazon.com `/b/`.
+- [x] **H2.0** — HTTP/2 variant of CL.0: an HTTP/2 request carrying content-length is ignored by the back-end after downgrade. Same two-request test as CL.0. Seen on amazon.com `/b/`. DONE 2026-10-27: `modules/h2zero.go` (tech `h20`). Needed a new h2 primitive — `h2raw.Client.WriteRequest` (send stream, no read) + `DrainResponses` (stream-aware, one HPACK decoder per conn). Two streams (1=poison POST+content-length+dangling body, 3=normal GET); signal = stream 3 swallowed/RST/GOAWAY (High) or status diverges from baseline (Medium). Primitive verified end-to-end on a real h2 server; full front/back H2.0 desync needs a live target.
 
-- [ ] **Chunk-extension desync (TERM.EXT / EXT.TERM)** — not my classic header-obfuscation TE.TE. Parser disagreement on a bare-LF inside a chunk extension (`2;` + bare `\n`). TERM.EXT = proxy ends header at LF, server treats LF as extension; EXT.TERM = reverse. Timeout-based probe. Ref scanner: `smugchunks`.
+- [x] **Chunk-extension desync (TERM.EXT / EXT.TERM)** — not my classic header-obfuscation TE.TE. Parser disagreement on a bare-LF inside a chunk extension (`2;` + bare `\n`). TERM.EXT = proxy ends header at LF, server treats LF as extension; EXT.TERM = reverse. Timeout-based probe. Ref scanner: `smugchunks`. DONE 2026-10-27: `modules/chunkext.go` (tech `chunkext`), payloads `BuildChunkExtTermExt`/`BuildChunkExtExtTerm` (bare LF after `size;x`). Timing detection via `SendRawProbe` + `CheckTimeout`, same as CLTE; two orientations sent so a timeout on one reveals TERM.EXT vs EXT.TERM. Sim-verified: hang→finding, clean→no FP. Exact hang-inducing byte framing should be confirmed against a real front/back pair.
 
-- [ ] **Expect-based desync** — abuse `Expect: 100-continue`. Four forms: vanilla + obfuscated, each with CL.0 and 0.CL variants. Also enables a second response-header block to bypass proxy header-stripping.
+- [x] **Expect-based desync** — abuse `Expect: 100-continue`. Four forms: vanilla + obfuscated, each with CL.0 and 0.CL variants. Also enables a second response-header block to bypass proxy header-stripping. DONE 2026-10-27: `modules/expect.go` (tech `expect`), payload `BuildExpectHeadersAndBody` on `SendRawWithDelay` (send headers, pause, observe pre-body bytes). Classifies 3 runs (none/plain/obfuscated): double header-block 100+final before body (High, header-strip bypass), early final on Expect only (Medium, early-response gadget for 0.CL), obfuscated-vs-plain disagreement (Medium). Sim-verified all 3 branches + no-FP on a 100-continue-honoring server. TODO-next: the explicit CL.0/0.CL-with-Expect smuggle variants (body-hold reparse) on top of this.
 
 - [ ] **Bare-LF header termination** — server accepts a lone `\n` as a line terminator; exploitable behind a proxy that requires CRLF. Add as a header-obfuscation permutation across modules.
 
@@ -31,7 +31,7 @@ Sources read 2026-10-19:
 
 - [ ] **Pause-based desync** — send headers promising a body, then pause; server times out but keeps the connection, parses the unsent body as a new request. Works against streaming front-ends (Varnish, Apache behind ALB).
 
-- [ ] **Connection-state attacks** — server assumes all requests on one connection share the first request's Host/validation. Two exploits: first-request validation bypass (reach internal sites) and first-request routing (reach any back-end). HTTP Request Smuggler has a "connection-state probe".
+- [x] **Connection-state attacks** — server assumes all requests on one connection share the first request's Host/validation. Two exploits: first-request validation bypass (reach internal sites) and first-request routing (reach any back-end). HTTP Request Smuggler has a "connection-state probe". DONE 2026-10-27: `modules/connstate.go` (tech `connstate`), payload `BuildHostProbe`, on `SendRawPipelined`. Sends a bad-Host probe standalone vs primed-as-2nd-request; divergence = front validates/routes only the first request (High when blocked-standalone→served-primed). Fully sim-verified (vuln vs safe front, no FP). Set `AltHost` to a real internal vhost to escalate to impact.
 
 ## Missing exploitation primitives (turn detections into impact)
 
@@ -53,7 +53,7 @@ Sources read 2026-10-19:
 
 - [ ] **Offset finder** — measure how many bytes of injected headers the front-end appends (cf. Turbo Intruder `0cl-find-offset.py`). Needed to size 0.CL/double-desync payloads.
 
-- [ ] **Header-permutation + strategy matrix** — combine permutations (leading space, etc.) with strategies (duplicate Host with invalid value) instead of fixed probes.
+- [~] **Header-permutation + strategy matrix** — combine permutations (leading space, etc.) with strategies (duplicate Host with invalid value) instead of fixed probes. ENGINE DONE 2026-10-27: `payloads/mutations.go` (registry `HeaderMutations` + `BuildHeaderMatrixProbe`), `modules/headermatrix.go` (tech `headermatrix`). Permutation axis = 6 mutations (canonical control + space-before-colon, tab-separator, obs-fold, bare-lf, leading-space-name); oracle axis = reflection only so far (unique marker echoed in a response header=High / body=Medium; canonical excluded as baseline). Attacks Host + X-Forwarded-Host by default. Sim-verified: obfuscated reflections flagged, canonical excluded, no-echo→no FP. STILL TODO: more oracles (routing, validation-bypass, timing), `-tech` sub-selection of individual mutations, reconnect TE.TE/ConnState to this registry. Which mutations actually split a given front/back is a live-target question.
 
 ---
 
